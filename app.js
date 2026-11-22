@@ -122,7 +122,7 @@
   var W = 0, H = 0, CX = 0, HORIZON = 0, GROUND_Y = 0, U = 1;
   function resize() {
     var dpr = Math.min(2, window.devicePixelRatio || 1);
-    var fs = document.fullscreenElement === shell;
+    var fs = document.fullscreenElement === shell || shell.classList.contains("pseudo-fs");
     W = Math.max(320, shell.clientWidth);
     if (fs) H = Math.max(300, shell.clientHeight);
     else H = Math.round(W * (W >= 760 ? 0.56 : 0.98));
@@ -137,8 +137,15 @@
   document.addEventListener("fullscreenchange", function () { setTimeout(resize, 60); });
 
   if (fsBtn) fsBtn.addEventListener("click", function () {
-    if (document.fullscreenElement) document.exitFullscreen();
-    else if (shell.requestFullscreen) shell.requestFullscreen();
+    if (document.fullscreenElement) { document.exitFullscreen(); return; }
+    if (shell.classList.contains("pseudo-fs")) { shell.classList.remove("pseudo-fs"); resize(); return; }
+    var done = false;
+    if (shell.requestFullscreen) {
+      var p = shell.requestFullscreen();
+      if (p && p.catch) p.catch(function () { shell.classList.add("pseudo-fs"); resize(); });
+      done = true;
+    }
+    if (!done) { shell.classList.add("pseudo-fs"); resize(); }
   });
 
   // Perspective: lane centre x at depth z (z=1 far, z=0 at player).
@@ -291,8 +298,29 @@
     }
   }
 
+  // If anything unexpected throws mid-frame, surface it on the overlay
+  // instead of dying silently, and keep the loop alive where possible.
+  window.addEventListener("error", function (e) {
+    try {
+      overlayTitle.textContent = "Something hiccuped";
+      overlayText.textContent = "Error: " + (e.message || "unknown") + " — tap below to restart the run.";
+      startBtn.textContent = "Restart";
+      overlay.style.display = "flex";
+    } catch (ignored) {}
+  });
+
   function tick(now) {
     if (state !== "running" && state !== "ready") return;
+    try { tickFrame(now); }
+    catch (err) {
+      // One bad frame must never freeze the game: log it visibly and carry on.
+      if (window.console && console.warn) console.warn("frame skipped:", err);
+      lastT = now;
+    }
+    if (state === "running" || state === "ready") requestAnimationFrame(tick);
+  }
+
+  function tickFrame(now) {
     var dt = Math.min(50, now - lastT); lastT = now;
     if (state === "ready" && now >= readyUntil) state = "running";
     var pace = state === "ready" ? 0.45 : 1;
@@ -306,6 +334,15 @@
       spawnIn -= dt;
       if (spawnIn <= 0) {
         var row = spawnRow(Math.random);
+        // Gentle start: for the first 60 m, only single obstacles and no
+        // trains, so every run gets a fair warm-up before it gets busy.
+        if (distanceM < 60) {
+          var hard = row.filter(function (o) { return o.type !== "coin"; });
+          if (hard.length > 1 || (hard.length === 1 && hard[0].type === "train")) {
+            row = [{ type: Math.random() < 0.5 ? "barrier" : "overhead", lane: Math.floor(Math.random() * 3) },
+                   { type: "coin", lane: Math.floor(Math.random() * 3) }];
+          }
+        }
         row.forEach(function (o) { obstacles.push({ type: o.type, lane: o.lane, z: 1.05, air: !!o.air, passed: false }); });
         spawnIn = 780 + Math.random() * 520; // roomier gaps than v1 — longer runs
       }
@@ -350,7 +387,6 @@
 
     scoreEl.textContent = scoreFor(distanceM, coins);
     draw(now);
-    requestAnimationFrame(tick);
   }
 
   /* ---------- drawing ---------- */

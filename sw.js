@@ -1,4 +1,4 @@
-const CACHE = "in-game-me-pwa-v2";
+const CACHE = "in-game-me-pwa-v3";
 const ASSETS = ["./", "./index.html", "./app.js", "./manifest.webmanifest", "./icon-192.png", "./icon-512.png", "./banner.png"];
 self.addEventListener("install", (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(ASSETS)).then(() => self.skipWaiting()));
