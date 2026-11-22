@@ -50,9 +50,10 @@
     return player.jumpH < 0.9;
   }
 
-  // Speed (world units per ms) ramps gently with distance — v2 pacing:
-  // slower start and a lower top speed than v1, so runs last longer.
-  function speedFor(distanceM) { return 0.00050 + Math.min(0.00038, distanceM * 0.00000032); }
+  // Speed (world units per ms) ramps gently with distance — v2.1 pacing:
+  // a slower start than v2 (same top speed), so runs last longer while
+  // the player learns the timing.
+  function speedFor(distanceM) { return 0.00044 + Math.min(0.00044, distanceM * 0.00000040); }
   function scoreFor(distanceM, coins) { return Math.floor(distanceM) + coins * 5; }
   function stageFor(distanceM) { return Math.floor(distanceM / 250) + 1; }
 
@@ -167,6 +168,8 @@
   var floaters = [];    // {x,y,text,life}
   var distanceM = 0, coins = 0, best = 0, spawnIn = 0, lastT = 0, speed = 0;
   var readyUntil = 0, shakeUntil = 0, dustIn = 0, stage = 1, stageFlashUntil = 0;
+  var shield = true, invulnUntil = 0, shieldFlashUntil = 0;
+  var shieldEl = document.getElementById("shield");
   var faceImg = null, faceLoaded = false;
 
   try { best = parseInt(localStorage.getItem("igm-best") || "0", 10) || 0; } catch (e) { best = 0; }
@@ -215,8 +218,10 @@
     player = { lane: 1, jumpStart: 0, jumpH: 0, sliding: false, slideUntil: 0, x: laneX(1, 0) };
     obstacles = []; particles = []; floaters = [];
     distanceM = 0; coins = 0; stage = 1; spawnIn = 1150; dustIn = 0;
+    shield = true; invulnUntil = 0;
     scoreEl.textContent = "0"; coinsEl.textContent = "0";
     if (stageEl) stageEl.textContent = "1";
+    if (shieldEl) shieldEl.textContent = "🛡";
   }
 
   function startGame() {
@@ -358,9 +363,9 @@
       spawnIn -= dt;
       if (spawnIn <= 0) {
         var row = spawnRow(Math.random);
-        // Gentle start: for the first 60 m, only single obstacles and no
+        // Gentle start: for the first 80 m, only single obstacles and no
         // trains, so every run gets a fair warm-up before it gets busy.
-        if (distanceM < 60) {
+        if (distanceM < 80) {
           var hard = row.filter(function (o) { return o.type !== "coin"; });
           if (hard.length > 1 || (hard.length === 1 && hard[0].type === "train")) {
             row = [{ type: Math.random() < 0.5 ? "barrier" : "overhead", lane: Math.floor(Math.random() * 3) },
@@ -395,7 +400,19 @@
     obstacles = obstacles.filter(function (o) { return o.z > -0.25; });
     for (var i = 0; i < obstacles.length; i++) {
       var o = obstacles[i];
-      if (collides(o, player)) { draw(); gameOver(); return; }
+      if (collides(o, player)) {
+        if (now < invulnUntil) { /* just lost the shield — brief grace */ }
+        else if (shield) {
+          // The free hit: shield breaks, nearby obstacles clear, run goes on.
+          shield = false; invulnUntil = now + 1300; shieldFlashUntil = now + 500;
+          if (shieldEl) shieldEl.textContent = "—";
+          obstacles = obstacles.filter(function (x) { return x === o ? false : !(x.z > -0.3 && x.z < 0.45); });
+          burst(player.x, GROUND_Y - 60 * U, 16, "#67e8f9", 0.3, 0.16);
+          floaters.push({ x: player.x, y: GROUND_Y - 130 * U, text: "SHIELD DOWN!", life: 0 });
+          break;
+        }
+        else { draw(); gameOver(); return; }
+      }
       if (!o.passed && collectCoin(o, player)) {
         o.passed = true; coins++; coinsEl.textContent = coins;
         var cxp = laneX(o.lane, 0), cyp = GROUND_Y - (o.air ? 120 : 46) * U;
@@ -533,6 +550,17 @@
       ctx.beginPath(); ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2); ctx.fill();
     });
     ctx.globalAlpha = 1;
+    // Shield ring while the free hit is available (pulsing cyan circle),
+    // and a blue flash the moment it breaks.
+    if (shield && (state === "running" || state === "ready")) {
+      ctx.strokeStyle = "rgba(103,232,249," + (0.55 + 0.3 * Math.sin(now / 240)) + ")";
+      ctx.lineWidth = 2.5 * U;
+      ctx.beginPath(); ctx.arc(player.x, GROUND_Y - 52 * U - player.jumpH * H * 0.24, 44 * U, 0, Math.PI * 2); ctx.stroke();
+    }
+    if (now < shieldFlashUntil) {
+      ctx.fillStyle = "rgba(103,232,249," + (0.22 * (shieldFlashUntil - now) / 500) + ")";
+      ctx.fillRect(-10, -10, W + 20, H + 20);
+    }
     // Player shadow, then the runner
     var py = GROUND_Y - 12 * U - player.jumpH * H * 0.24;
     var shScale = 1 - player.jumpH * 0.45;
