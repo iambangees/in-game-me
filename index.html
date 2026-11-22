@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>In-Game-Me — you are the runner</title>
+<meta name="description" content="Upload your photo and play as the character in a Subway Surfers-style endless runner — dodge trains, jump barriers, slide under bars, grab coins. Fully in your browser.">
+<meta property="og:title" content="In-Game-Me — you are the runner">
+<meta property="og:description" content="Upload your photo, become the runner, and see how far you get. Coins, trains, jumps and slides — right in the browser.">
+<meta property="og:type" content="website">
+<meta property="og:image" content="banner.png">
+<meta name="twitter:card" content="summary_large_image">
+<style>
+  :root { --bg:#0b1e2e; --card:#12293d; --line:#23465f; --text:#eef6fb; --muted:#9db8c8; --amber:#f59e0b; --amber-dk:#b45309; --soft:#fde68a; }
+  * { box-sizing: border-box; }
+  body { margin:0; font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background:var(--bg); color:var(--text); }
+  .wrap { max-width: 600px; margin: 0 auto; padding: 28px 16px 56px; }
+  h1 { font-size: 34px; margin: 6px 0 2px; letter-spacing: .2px; }
+  .tag { color: var(--muted); margin: 0 0 20px; line-height: 1.55; }
+  .hud { display:flex; gap:10px; margin: 0 0 12px; }
+  .stat { flex:1; background:var(--card); border:1px solid var(--line); border-radius:12px; padding:10px 12px; text-align:center; }
+  .stat .n { font-size:24px; font-weight:800; color:var(--soft); }
+  .stat .l { font-size:11px; letter-spacing:.12em; text-transform:uppercase; color:var(--muted); }
+  .game-shell { position:relative; background:#0e2a3f; border:1px solid var(--line); border-radius:16px; overflow:hidden; }
+  canvas { display:block; margin:0 auto; touch-action:none; }
+  .overlay { position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:12px; background:rgba(6,20,32,0.82); text-align:center; padding:20px; }
+  .overlay h2 { margin:0; font-size:28px; }
+  .overlay p { margin:0; color:var(--muted); line-height:1.6; font-size:14.5px; }
+  .overlay p b { color:var(--text); }
+  button { background:var(--amber); color:#231303; border:0; border-radius:10px; padding:12px 20px; font-size:15px; font-weight:700; cursor:pointer; }
+  button.ghost { background:transparent; color:var(--text); border:1px solid var(--line); font-weight:600; }
+  button:disabled { opacity:.45; cursor:default; }
+  .pad { display:grid; grid-template-columns: repeat(4, 1fr); gap:8px; margin-top:12px; }
+  .pad button { padding:13px 6px; font-size:14px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:16px; padding:20px; margin-top:20px; }
+  .card h2 { font-size:19px; margin:0 0 6px; }
+  .card p.hint { color:var(--muted); font-size:14px; line-height:1.55; margin:0 0 12px; }
+  .photo-row { display:flex; gap:14px; align-items:center; flex-wrap:wrap; }
+  #photo-preview { width:72px; height:72px; border-radius:50%; object-fit:cover; border:3px solid var(--amber); display:none; }
+  input[type=file] { font-size:14px; color:var(--text); max-width:100%; }
+  .keys { font-size:14px; line-height:1.9; color:var(--muted); }
+  .keys b { color:var(--text); }
+  .foot { color:var(--muted); font-size:13px; line-height:1.6; margin-top:30px; }
+  a { color:var(--soft); }
+  .toprow { display:flex; justify-content:space-between; align-items:center; gap:10px; }
+</style>
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="manifest" href="manifest.webmanifest">
+</head>
+<body>
+<div class="wrap">
+  <h1>In-Game-Me</h1>
+  <p class="tag">You are the runner. Upload your photo, hit start, and see how far you get — dodge the trains, jump the barriers, slide under the bars, grab the coins.</p>
+
+  <div class="hud">
+    <div class="stat"><div class="n" id="score">0</div><div class="l">Score</div></div>
+    <div class="stat"><div class="n" id="coins">0</div><div class="l">Coins</div></div>
+    <div class="stat"><div class="n" id="best">0</div><div class="l">Best</div></div>
+  </div>
+
+  <div class="game-shell">
+    <canvas id="game" width="560" height="840" aria-label="Endless runner game"></canvas>
+    <div class="overlay" id="overlay">
+      <h2 id="overlay-title">Ready to run?</h2>
+      <p id="overlay-text">Your photo becomes the runner's face. No photo? You run with the default face — the game is the same either way.</p>
+      <button id="start-btn">Start running</button>
+    </div>
+  </div>
+  <div class="toprow" style="margin-top:12px;">
+    <div class="pad" style="flex:1; margin-top:0;">
+      <button class="ghost" data-move="left">◀ Left</button>
+      <button class="ghost" data-move="jump">▲ Jump</button>
+      <button class="ghost" data-move="slide">▼ Slide</button>
+      <button class="ghost" data-move="right">Right ▶</button>
+    </div>
+    <button class="ghost" id="pause-btn" style="margin-left:8px;">⏸</button>
+  </div>
+
+  <div class="card">
+    <h2>Put yourself in the game</h2>
+    <p class="hint">Your photo is cropped to a circle and drawn as the runner's face. It never leaves your browser — it is stored only on this device, and you can remove it any time.</p>
+    <div class="photo-row">
+      <img id="photo-preview" alt="Your runner photo">
+      <input type="file" id="photo-input" accept="image/*">
+      <button class="ghost" id="remove-photo" style="display:none;">Remove photo</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>How to play</h2>
+    <div class="keys">
+      <b>← →</b> or swipe — switch lane &nbsp;·&nbsp; <b>↑ / Space</b> or swipe up — jump<br>
+      <b>↓</b> or swipe down — slide &nbsp;·&nbsp; <b>P</b> — pause<br>
+      🟧 <b>Orange barrier</b> — jump it &nbsp;·&nbsp; 🟪 <b>Purple bar</b> — slide under it<br>
+      🚂 <b>Red train</b> — can't jump or slide it, switch lane &nbsp;·&nbsp; <b>🪙</b> — 5 points each
+    </div>
+    <p class="hint" style="margin-top:12px;">The run gets faster the further you go. Best score is saved on this device only.</p>
+  </div>
+
+  <p class="foot">Honest limits: this is a 2D runner — your photo becomes the character's face on a drawn runner, not a full 3D avatar of you. Everything runs in your browser; no account, no uploads, no ads.</p>
+
+<footer class="bangees-more" style="margin-top:44px;background:#081226;color:#e8eefc;padding:22px 16px 26px;text-align:center;font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;"><div style="font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:#8fb4ff;margin-bottom:9px;">More from Bangees</div><nav style="font-size:14.5px;line-height:2;"><a href="https://iambangees.github.io/agent-roll-call/" style="color:#cfe0ff;text-decoration:none;">Agent Roll Call</a> · <a href="https://iambangees.github.io/name-atlas/" style="color:#cfe0ff;text-decoration:none;">Name Atlas</a> · <a href="https://iambangees.github.io/naira-lens/" style="color:#cfe0ff;text-decoration:none;">Naira Lens</a> · <a href="https://iambangees.github.io/aeris/" style="color:#cfe0ff;text-decoration:none;">Aeris</a> · <a href="https://iambangees.github.io/memelab/" style="color:#cfe0ff;text-decoration:none;">MemeLab</a> · <a href="https://iambangees.github.io/vidgrab/" style="color:#cfe0ff;text-decoration:none;">VidGrab</a> · <a href="https://iambangees.github.io/pic-to-draw/" style="color:#cfe0ff;text-decoration:none;">PicToDraw</a> · <a href="https://iambangees.github.io/agent-cards/" style="color:#cfe0ff;text-decoration:none;">Agent Cards</a> · <a href="https://iambangees.github.io/claim-checker/" style="color:#cfe0ff;text-decoration:none;">Claim Checker</a> · <a href="https://iambangees.github.io/bet-diary/" style="color:#cfe0ff;text-decoration:none;">Bet Diary</a> · <a href="https://iambangees.github.io/qr-maker/" style="color:#cfe0ff;text-decoration:none;">QR Maker</a> · <a href="https://iambangees.github.io/scan-to-3d/" style="color:#cfe0ff;text-decoration:none;">Scan to 3D</a> · <a href="https://iambangees.github.io/share-fly/" style="color:#cfe0ff;text-decoration:none;">Share Fly</a> · <a href="https://discaro.vercel.app" style="color:#cfe0ff;text-decoration:none;">Discaro</a></nav></footer>
+</div>
+<script src="app.js"></script>
+</body>
+</html>
