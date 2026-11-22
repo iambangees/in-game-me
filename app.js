@@ -231,7 +231,7 @@
   function gameOver() {
     state = "over";
     shakeUntil = performance.now() + 450;
-    draw(); // one shaken frame behind the overlay
+    try { draw(); } catch (e) { /* the overlay below must show no matter what */ }
     var score = scoreFor(distanceM, coins);
     if (score > best) { best = score; try { localStorage.setItem("igm-best", String(best)); } catch (e) {} bestEl.textContent = best; }
     overlayTitle.textContent = "Wipeout!";
@@ -309,8 +309,10 @@
     } catch (ignored) {}
   });
 
+  var frameCount = 0, lastFrameAt = 0;
   function tick(now) {
     if (state !== "running" && state !== "ready") return;
+    frameCount++; lastFrameAt = performance.now();
     try { tickFrame(now); }
     catch (err) {
       // One bad frame must never freeze the game: log it visibly and carry on.
@@ -319,6 +321,28 @@
     }
     if (state === "running" || state === "ready") requestAnimationFrame(tick);
   }
+
+  // Watchdog: if the frame loop ever stalls mid-run (a browser quirk that
+  // drops the animation callback), quietly re-kick it. Only if it stalls
+  // again and again in the same run does it pause and say what happened.
+  var stallKicks = 0, lastWatchFrame = 0;
+  setInterval(function () {
+    if (state !== "running" && state !== "ready") { stallKicks = 0; return; }
+    if (frameCount !== lastWatchFrame) { lastWatchFrame = frameCount; stallKicks = 0; return; }
+    if (performance.now() - lastFrameAt <= 1600) return;
+    stallKicks++;
+    if (stallKicks <= 3) {
+      lastT = performance.now();
+      lastFrameAt = performance.now();
+      requestAnimationFrame(tick);
+    } else {
+      overlayTitle.textContent = "Game stalled";
+      overlayText.textContent = "The animation loop stopped and could not be restarted. State: " + state + ", distance " + Math.floor(distanceM) + " m, frame " + frameCount + ". Tap below to run again.";
+      startBtn.textContent = "Run again";
+      overlay.style.display = "flex";
+      state = "over";
+    }
+  }, 600);
 
   function tickFrame(now) {
     var dt = Math.min(50, now - lastT); lastT = now;
